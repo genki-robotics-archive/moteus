@@ -145,6 +145,8 @@ enum Register : uint16_t {
   kCommandIlimitScale = 0x02b,
   kCommandFixedCurrentOverride = 0x02c,
   kCommandIgnorePositionBounds = 0x02d,
+  kCommandKp = 0x02e,
+  kCommandKd = 0x02f,
 
   kPositionKp = 0x030,
   kPositionKi = 0x031,
@@ -908,6 +910,8 @@ struct PositionMode {
     double ilimit_scale = 1.0;
     double fixed_current_override = NaN;
     double ignore_position_bounds = 0.0;
+    double kp = NaN;
+    double kd = NaN;
   };
 
   struct Format {
@@ -925,6 +929,8 @@ struct PositionMode {
     Resolution ilimit_scale = kIgnore;
     Resolution fixed_current_override = kIgnore;
     Resolution ignore_position_bounds = kIgnore;
+    Resolution kp = kIgnore;
+    Resolution kd = kIgnore;
   };
 
   static uint8_t Make(WriteCanData* frame,
@@ -951,6 +957,8 @@ struct PositionMode {
       format.ilimit_scale,
       format.fixed_current_override,
       format.ignore_position_bounds,
+      format.kp,
+      format.kd,
     };
     WriteCombiner combiner(
         frame, 0x00,
@@ -1002,6 +1010,12 @@ struct PositionMode {
     if (combiner.MaybeWrite()) {
       frame->WriteInt(command.ignore_position_bounds,
                       format.ignore_position_bounds);
+    }
+    if (combiner.MaybeWrite()) {
+      frame->WritePwm(command.kp, format.kp);
+    }
+    if (combiner.MaybeWrite()) {
+      frame->WritePwm(command.kd, format.kd);
     }
     return 0;
   }
@@ -1124,6 +1138,8 @@ struct StayWithinMode {
     double watchdog_timeout = NaN;
     double ilimit_scale = 1.0;
     double ignore_position_bounds = 0.0;
+    double kp = NaN;  // Direct kp value (overrides kp_scale if not NaN)
+    double kd = NaN;  // Direct kd value (overrides kd_scale if not NaN)
   };
 
   struct Format {
@@ -1136,6 +1152,8 @@ struct StayWithinMode {
     Resolution watchdog_timeout = kIgnore;
     Resolution ilimit_scale = kIgnore;
     Resolution ignore_position_bounds = kIgnore;
+    Resolution kp = kIgnore;
+    Resolution kd = kIgnore;
   };
 
   static uint8_t Make(WriteCanData* frame,
@@ -1229,10 +1247,12 @@ struct ZeroVelocityMode {
     // The damping scale factor for the derivative term.
     // Smaller values result in less damping.
     double kd_scale = 1.0;
+    double kd = NaN;  // Direct kd value (overrides kd_scale if not NaN)
   };
 
   struct Format {
     Resolution kd_scale = kIgnore;
+    Resolution kd = kIgnore;
   };
 
   static uint8_t Make(WriteCanData* frame,
@@ -1242,9 +1262,9 @@ struct ZeroVelocityMode {
     frame->Write<int8_t>(Register::kMode);
     frame->Write<int8_t>(Mode::kZeroVelocity);
 
-    // Only write kd_scale if format is not ignored
-    if (format.kd_scale != kIgnore) {
-      const Resolution kResolutions[] = { format.kd_scale };
+    // Write kd_scale and/or kd if formats are not ignored
+    if (format.kd_scale != kIgnore || format.kd != kIgnore) {
+      const Resolution kResolutions[] = { format.kd_scale, format.kd };
       WriteCombiner combiner(
           frame, 0x00,
           Register::kCommandKdScale,
@@ -1253,6 +1273,9 @@ struct ZeroVelocityMode {
 
       if (combiner.MaybeWrite()) {
         frame->WritePwm(command.kd_scale, format.kd_scale);
+      }
+      if (combiner.MaybeWrite()) {
+        frame->WritePwm(command.kd, format.kd);
       }
     }
 
